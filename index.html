@@ -26,7 +26,7 @@
 
     .container {
       width: 100%;
-      max-width: 900px;
+      max-width: 1200px;
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -59,7 +59,7 @@
       align-items: center;
       justify-content: center;
       flex-wrap: wrap;
-      gap: 10px;
+      gap: 15px;
       margin-bottom: 25px;
       background: rgba(26, 26, 26, 0.8);
       padding: 20px;
@@ -85,7 +85,7 @@
     }
 
     input {
-      width: 100px;
+      width: 120px;
       text-align: center;
       background: #111;
       color: #76b900;
@@ -124,6 +124,16 @@
     .reset-btn:hover {
       background: linear-gradient(to right, #444, #666);
       box-shadow: 0 4px 12px rgba(100, 100, 100, 0.4);
+    }
+
+    .clear-cookie-btn {
+      background: linear-gradient(to right, #555, #333);
+      color: #ccc;
+    }
+
+    .clear-cookie-btn:hover {
+      background: linear-gradient(to right, #666, #444);
+      box-shadow: 0 4px 12px rgba(150, 150, 150, 0.4);
     }
 
     .stats {
@@ -202,7 +212,7 @@
       grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
       gap: 18px;
       width: 100%;
-      max-width: 900px;
+      max-width: 1200px;
     }
 
     .check-item {
@@ -262,7 +272,11 @@
       background: rgba(26, 26, 26, 0.6);
       border-radius: 8px;
       width: 100%;
-      max-width: 600px;
+      max-width: 800px;
+      min-height: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
 
     .footer {
@@ -275,7 +289,23 @@
       width: 100%;
     }
 
-    @media (max-width: 768px) {
+    .performance-warning {
+      color: #ff9900;
+      background: rgba(255, 153, 0, 0.1);
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      margin-top: 5px;
+      display: none;
+    }
+
+    @media (max-width: 1200px) {
+      .check-container {
+        grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+      }
+    }
+
+    @media (max-width: 900px) {
       .check-container {
         grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
       }
@@ -294,7 +324,7 @@
       }
     }
 
-    @media (max-width: 480px) {
+    @media (max-width: 600px) {
       .check-container {
         grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
         gap: 12px;
@@ -310,6 +340,19 @@
         font-size: 26px;
         margin-bottom: 8px;
       }
+      
+      .controls {
+        padding: 15px;
+      }
+      
+      .control-group {
+        flex-direction: column;
+        width: 100%;
+      }
+      
+      input {
+        width: 100%;
+      }
     }
   </style>
 </head>
@@ -318,15 +361,19 @@
     <header>
       <h1>NVIDIA Progress Tracker</h1>
       <p class="subtitle">Track your tasks with automatic cookie-based storage</p>
+      <p class="performance-warning" id="performanceWarning">
+        Note: Large numbers of items may impact performance
+      </p>
     </header>
     
     <div class="controls">
       <div class="control-group">
-        <input type="number" id="numInput" placeholder="Enter N" min="1" max="50" value="12">
+        <input type="number" id="numInput" placeholder="Enter N" min="1" value="12">
         <button onclick="generateChecks()">Generate Items</button>
       </div>
       <div class="control-group">
         <button class="reset-btn" onclick="resetProgress()">Reset Progress</button>
+        <button class="clear-cookie-btn" onclick="clearAllCookies()">Clear All Cookies</button>
       </div>
     </div>
     
@@ -348,7 +395,7 @@
     </div>
     
     <div class="footer">
-      NVIDIA Progress Tracker &copy; 2023 | Progress saved via cookies
+      NVIDIA Progress Tracker &copy; 2023 | Unlimited items | Progress saved via cookies
     </div>
   </div>
 
@@ -358,7 +405,15 @@
       const d = new Date();
       d.setTime(d.getTime() + (days * 24 * 60 * 60 * 1000));
       const expires = "expires=" + d.toUTCString();
-      document.cookie = name + "=" + JSON.stringify(value) + ";" + expires + ";path=/";
+      // Use try-catch for very large values that might exceed cookie size limits
+      try {
+        document.cookie = name + "=" + JSON.stringify(value) + ";" + expires + ";path=/";
+        return true;
+      } catch (e) {
+        console.error("Error setting cookie:", e);
+        showCookieStatus("Error saving progress. Data might be too large.", "#ff9900");
+        return false;
+      }
     }
 
     function getCookie(name) {
@@ -368,7 +423,12 @@
         let c = ca[i];
         while (c.charAt(0) === ' ') c = c.substring(1);
         if (c.indexOf(nameEQ) === 0) {
-          return JSON.parse(c.substring(nameEQ.length));
+          try {
+            return JSON.parse(c.substring(nameEQ.length));
+          } catch (e) {
+            console.error("Error parsing cookie:", e);
+            return null;
+          }
         }
       }
       return null;
@@ -388,7 +448,7 @@
       const savedProgress = getCookie('nvidiaProgress');
       if (savedProgress) {
         progressState = savedProgress;
-        showCookieStatus("Progress loaded from previous session", "#76b900");
+        showCookieStatus(`Progress loaded from previous session (${Object.keys(savedProgress).length} sets)`, "#76b900");
       }
       
       // Generate default items
@@ -397,46 +457,68 @@
 
     function generateChecks() {
       const container = document.getElementById("checkContainer");
-      container.innerHTML = "";
+      const inputVal = document.getElementById("numInput").value;
+      const n = parseInt(inputVal);
       
-      const n = parseInt(document.getElementById("numInput").value);
-      if (isNaN(n) || n < 1 || n > 50) {
-        alert("Please enter a number between 1 and 50");
+      // Validate input
+      if (isNaN(n) || n < 1) {
+        showCookieStatus("Please enter a valid positive number", "#ff9900");
         return;
       }
       
-      currentN = n;
-      
-      // Initialize progress state for this N if not exists
-      if (!progressState[n]) {
-        progressState[n] = new Array(n).fill(false);
+      // Show warning for very large numbers
+      const warningEl = document.getElementById("performanceWarning");
+      if (n > 100) {
+        warningEl.style.display = "block";
+      } else {
+        warningEl.style.display = "none";
       }
       
-      // Generate check items
-      for (let i = 1; i <= n; i++) {
-        const item = document.createElement("div");
-        item.className = "check-item";
-        item.dataset.index = i - 1;
+      // Clear container with fade effect
+      container.style.opacity = "0.5";
+      setTimeout(() => {
+        container.innerHTML = "";
+        currentN = n;
         
-        const isDone = progressState[n][i - 1];
-        if (isDone) {
-          item.classList.add("done");
+        // Initialize progress state for this N if not exists
+        if (!progressState[n]) {
+          progressState[n] = new Array(n).fill(false);
         }
         
-        item.innerHTML = `
-          <span class="checkmark">${isDone ? "✔" : "⬜"}</span>
-          <span>#${i}</span>
-        `;
+        // Performance optimization: batch DOM operations
+        const fragment = document.createDocumentFragment();
         
-        item.addEventListener("click", () => {
-          toggleItemState(item);
-        });
+        for (let i = 1; i <= n; i++) {
+          const item = document.createElement("div");
+          item.className = "check-item";
+          item.dataset.index = i - 1;
+          
+          const isDone = progressState[n][i - 1];
+          if (isDone) {
+            item.classList.add("done");
+          }
+          
+          item.innerHTML = `
+            <span class="checkmark">${isDone ? "✔" : "⬜"}</span>
+            <span>#${i}</span>
+          `;
+          
+          // Use event delegation for better performance with many items
+          item.addEventListener("click", () => {
+            toggleItemState(item);
+          });
+          
+          fragment.appendChild(item);
+        }
         
-        container.appendChild(item);
-      }
-      
-      updateProgress();
-      saveProgressToCookie();
+        container.appendChild(fragment);
+        container.style.opacity = "1";
+        
+        updateProgress();
+        saveProgressToCookie();
+        showCookieStatus(`Generated ${n} items`, "#76b900");
+        
+      }, 50);
     }
 
     function toggleItemState(item) {
@@ -482,11 +564,21 @@
     }
 
     function saveProgressToCookie() {
+      // Clean up old progress data to save space (keep only last 20 sets)
+      const keys = Object.keys(progressState);
+      if (keys.length > 20) {
+        // Sort by key (which is N value) and remove the oldest ones
+        const sortedKeys = keys.sort((a, b) => parseInt(a) - parseInt(b));
+        for (let i = 0; i < sortedKeys.length - 20; i++) {
+          delete progressState[sortedKeys[i]];
+        }
+      }
+      
       setCookie('nvidiaProgress', progressState, 30); // Store for 30 days
     }
 
     function resetProgress() {
-      if (confirm("Are you sure you want to reset all progress? This cannot be undone.")) {
+      if (confirm("Are you sure you want to reset progress for the current set? This cannot be undone.")) {
         // Reset current progress
         if (progressState[currentN]) {
           progressState[currentN] = new Array(currentN).fill(false);
@@ -505,17 +597,45 @@
       }
     }
 
+    function clearAllCookies() {
+      if (confirm("Are you sure you want to clear ALL saved progress? This will delete all cookie data.")) {
+        progressState = {};
+        deleteCookie('nvidiaProgress');
+        
+        // Reset current UI
+        const items = document.querySelectorAll(".check-item");
+        items.forEach(item => {
+          item.classList.remove("done");
+          item.querySelector(".checkmark").textContent = "⬜";
+        });
+        
+        updateProgress();
+        showCookieStatus("All cookies cleared. Progress reset.", "#76b900");
+      }
+    }
+
     function showCookieStatus(message, color = "#aaa") {
       const statusEl = document.getElementById("cookieStatus");
       statusEl.textContent = message;
       statusEl.style.color = color;
+      statusEl.style.fontWeight = "bold";
       
-      // Auto hide after 3 seconds
-      setTimeout(() => {
-        statusEl.textContent = "Progress is automatically saved in your browser cookies";
-        statusEl.style.color = "#aaa";
-      }, 3000);
+      // Auto hide after 4 seconds for non-permanent messages
+      if (!message.includes("automatically saved")) {
+        setTimeout(() => {
+          statusEl.textContent = "Progress is automatically saved in your browser cookies";
+          statusEl.style.color = "#aaa";
+          statusEl.style.fontWeight = "normal";
+        }, 4000);
+      }
     }
+
+    // Handle Enter key in input field
+    document.getElementById("numInput").addEventListener("keyup", function(event) {
+      if (event.key === "Enter") {
+        generateChecks();
+      }
+    });
   </script>
 </body>
 </html>
